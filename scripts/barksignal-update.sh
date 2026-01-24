@@ -5,17 +5,19 @@ CFG="/home/barksignal/barksignal/config.ini"
 APP_DIR="/home/barksignal/barksignal"
 REPO_DIR="/home/barksignal/barksignal-repo"
 
-python3 - <<'PY'
-import configparser, os, subprocess, sys
-cp=configparser.ConfigParser()
+python3 - <<'PY' > /tmp/bs_upd.txt
+import configparser
+cp = configparser.ConfigParser()
 cp.read("/home/barksignal/barksignal/config.ini")
-repo=cp.get("barksignal","repo_url",fallback="").strip()
-branch=cp.get("barksignal","repo_branch",fallback="main").strip()
-auto=cp.getboolean("barksignal","auto_update",fallback=True)
+
+repo = cp.get("barksignal", "repo_url", fallback="").strip()
+branch = cp.get("barksignal", "repo_branch", fallback="main").strip()
+auto = cp.getboolean("barksignal", "auto_update", fallback=True)
+
 print(repo)
 print(branch)
 print("1" if auto else "0")
-PY > /tmp/bs_upd.txt
+PY
 
 REPO_URL="$(sed -n '1p' /tmp/bs_upd.txt)"
 BRANCH="$(sed -n '2p' /tmp/bs_upd.txt)"
