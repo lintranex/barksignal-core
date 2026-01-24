@@ -44,6 +44,19 @@ fi
 # Copy only code files; NEVER overwrite config.ini
 rsync -a --delete   --exclude "config.ini"   --exclude ".wifi_configured" --exclude ".dog_configured" --exclude ".configured"   "${REPO_DIR}/" "${APP_DIR}/"
 
-systemctl restart barksignal-detector.service || true
-systemctl restart barksignal-portal.service || true
+# update system scripts
+install -m 0755 "${REPO_DIR}/scripts/barksignal-guard.sh" /usr/local/sbin/barksignal-guard.sh
+install -m 0755 "${REPO_DIR}/scripts/barksignal-update.sh" /usr/local/sbin/barksignal-update.sh
+install -m 0755 "${REPO_DIR}/scripts/barksignal-firstboot.sh" /usr/local/sbin/barksignal-firstboot.sh
+install -m 0755 "${REPO_DIR}/scripts/barksignal-goldenize.sh" /usr/local/sbin/barksignal-goldenize.sh
+
+# update systemd units
+install -m 0644 "${REPO_DIR}/systemd/"*.service /etc/systemd/system/
+install -m 0644 "${REPO_DIR}/systemd/"*.timer /etc/systemd/system/
+
+systemctl daemon-reload
+systemctl restart barksignal-guard || true
+systemctl restart barksignal-portal || true
+systemctl restart barksignal-detector || true
+
 echo "[update] done"
