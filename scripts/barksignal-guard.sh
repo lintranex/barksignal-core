@@ -9,6 +9,10 @@ SSID="BarkSignal"
 IFACE="wlan0"
 
 internet_ok() {
+  # If neither eth0 nor wlan0 has a default route -> no internet
+  ip route | grep -q '^default' || return 1
+
+  # Quick HTTP probe
   curl -s --max-time 3 -I https://www.barksignal.com >/dev/null 2>&1
 }
 
