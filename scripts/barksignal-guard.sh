@@ -36,7 +36,7 @@ start_hotspot() {
   nmcli radio wifi on || true
   nmcli con down "${SSID}" >/dev/null 2>&1 || true
   nmcli con delete "${SSID}" >/dev/null 2>&1 || true
-  nmcli dev wifi hotspot ifname "${IFACE}" ssid "${SSID}" password "" || true
+  nmcli dev wifi hotspot ifname "${IFACE}" ssid "${SSID}" || true
   add_redirect
   systemctl start barksignal-portal.service || true
   systemctl stop barksignal-detector.service || true
