@@ -1,1 +1,16 @@
+[Unit]
+Description=BarkSignal Detector
+After=network-online.target sound.target
+Wants=network-online.target
 
+[Service]
+Type=simple
+User=barksignal
+WorkingDirectory=/home/barksignal/barksignal
+ExecStart=/home/barksignal/venv-barksignal/bin/python /home/barksignal/barksignal/bark_detector.py --config /home/barksignal/barksignal/config.ini
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

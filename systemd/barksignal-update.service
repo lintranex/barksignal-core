@@ -1,0 +1,8 @@
+[Unit]
+Description=BarkSignal Update (git pull)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/barksignal-update.sh

@@ -1,0 +1,16 @@
+[Unit]
+Description=BarkSignal Setup Portal
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=barksignal
+WorkingDirectory=/home/barksignal/barksignal/portal
+ExecStart=/home/barksignal/venv-barksignal/bin/python /home/barksignal/barksignal/portal/app.py
+Restart=always
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

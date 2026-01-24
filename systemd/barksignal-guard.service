@@ -1,0 +1,13 @@
+[Unit]
+Description=BarkSignal Guard (offline => AP + portal)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/barksignal-guard.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
