@@ -1,0 +1,10 @@
+config.ini
+*.nmconnection
+.wifi_configured
+.dog_configured
+.configured
+
+__pycache__/
+*.pyc
+
+.DS_Store
