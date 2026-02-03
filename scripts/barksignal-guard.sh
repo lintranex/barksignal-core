@@ -64,7 +64,11 @@ PY
 }
 
 wifi_connected() {
-  nmcli -t -f DEVICE,TYPE,STATE dev status | grep '^wlan0:wifi:connected' >/dev/null 2>&1
+  # Treat the Hotspot connection as "not connected" so we don't flap it.
+  nmcli -t -f DEVICE,TYPE,STATE,CONNECTION dev status \
+    | grep -E '^wlan0:wifi:connected:' \
+    | grep -v ":${HOTSPOT_NAME}$" \
+    >/dev/null 2>&1
 }
 
 start_hotspot() {
