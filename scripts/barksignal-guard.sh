@@ -7,6 +7,17 @@ FLAG_DOG="${APP_DIR}/.dog_configured"
 IFACE="wlan0"
 HOTSPOT_NAME="Hotspot"   # NetworkManager internal hotspot name
 
+ensure_http_redirect() {
+  # Redirect all HTTP on the hotspot interface to the portal (8080).
+  if ! iptables -t nat -C PREROUTING -i "${IFACE}" -p tcp --dport 80 -j REDIRECT --to-ports 8080 >/dev/null 2>&1; then
+    iptables -t nat -A PREROUTING -i "${IFACE}" -p tcp --dport 80 -j REDIRECT --to-ports 8080 || true
+  fi
+}
+
+remove_http_redirect() {
+  iptables -t nat -D PREROUTING -i "${IFACE}" -p tcp --dport 80 -j REDIRECT --to-ports 8080 >/dev/null 2>&1 || true
+}
+
 dog_id_is_set() {
   python3 - <<'PY'
 import configparser
@@ -24,11 +35,13 @@ wifi_connected() {
 start_hotspot() {
   nmcli radio wifi on || true
   nmcli con up "${HOTSPOT_NAME}" || true
+  ensure_http_redirect
   systemctl start barksignal-portal.service || true
 }
 
 stop_hotspot() {
   systemctl stop barksignal-portal.service || true
+  remove_http_redirect
   nmcli con down "${HOTSPOT_NAME}" >/dev/null 2>&1 || true
 }
 
