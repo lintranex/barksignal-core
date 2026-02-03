@@ -63,19 +63,23 @@ print("1" if dog and dog.upper()!="DEMO" else "0")
 PY
 }
 
+active_wifi_conn_name() {
+  nmcli -t -f NAME,DEVICE,TYPE con show --active 2>/dev/null \
+    | awk -F: -v dev="${IFACE}" '$2==dev && $3=="wifi" {print $1; exit}'
+}
+
 wifi_connected() {
-  # Only treat wlan0 as "connected" if it's in infrastructure mode.
-  local state mode
-  state="$(nmcli -t -f GENERAL.STATE dev show "${IFACE}" 2>/dev/null | cut -d: -f2 | cut -d' ' -f1)"
-  mode="$(nmcli -t -f 802-11-wireless.mode dev show "${IFACE}" 2>/dev/null | cut -d: -f2)"
-  [[ "${state}" == "100" && "${mode}" == "infrastructure" ]]
+  # Treat wlan0 as connected only if an active *wifi* connection exists
+  # and it's not our Hotspot.
+  local name
+  name="$(active_wifi_conn_name)"
+  [[ -n "${name}" && "${name}" != "${HOTSPOT_NAME}" ]]
 }
 
 hotspot_active() {
-  local state mode
-  state="$(nmcli -t -f GENERAL.STATE dev show "${IFACE}" 2>/dev/null | cut -d: -f2 | cut -d' ' -f1)"
-  mode="$(nmcli -t -f 802-11-wireless.mode dev show "${IFACE}" 2>/dev/null | cut -d: -f2)"
-  [[ "${state}" == "100" && "${mode}" == "ap" ]]
+  local name
+  name="$(active_wifi_conn_name)"
+  [[ "${name}" == "${HOTSPOT_NAME}" ]]
 }
 
 start_hotspot() {
