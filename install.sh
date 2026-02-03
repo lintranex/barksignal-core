@@ -81,6 +81,12 @@ install_scripts_services() {
   install -m 0644 "${SRC_DIR}/systemd/barksignal-firstboot.service" /etc/systemd/system/barksignal-firstboot.service
 }
 
+install_polkit_rules() {
+  mkdir -p /etc/polkit-1/rules.d
+  install -m 0644 "${SRC_DIR}/polkit/10-barksignal-nm.rules" /etc/polkit-1/rules.d/10-barksignal-nm.rules
+  systemctl restart polkit || true
+}
+
 enable_services() {
   systemctl daemon-reload
   systemctl enable --now barksignal-firstboot.service
@@ -99,6 +105,7 @@ main() {
   install_app_files
   download_yamnet
   install_scripts_services
+  install_polkit_rules
   enable_services
 
   echo

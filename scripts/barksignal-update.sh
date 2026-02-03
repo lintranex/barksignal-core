@@ -54,6 +54,11 @@ install -m 0755 "${REPO_DIR}/scripts/barksignal-goldenize.sh" /usr/local/sbin/ba
 install -m 0644 "${REPO_DIR}/systemd/"*.service /etc/systemd/system/
 install -m 0644 "${REPO_DIR}/systemd/"*.timer /etc/systemd/system/
 
+# update polkit rules
+mkdir -p /etc/polkit-1/rules.d
+install -m 0644 "${REPO_DIR}/polkit/10-barksignal-nm.rules" /etc/polkit-1/rules.d/10-barksignal-nm.rules
+systemctl restart polkit || true
+
 systemctl daemon-reload
 systemctl restart barksignal-guard || true
 systemctl restart barksignal-portal || true
