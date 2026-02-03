@@ -65,7 +65,7 @@ PY
 
 active_wifi_conn_name() {
   nmcli -t -f NAME,DEVICE,TYPE con show --active 2>/dev/null \
-    | awk -F: -v dev="${IFACE}" '$2==dev && $3=="wifi" {print $1; exit}'
+    | awk -F: -v dev="${IFACE}" '($2==dev && ($3=="wifi" || $3=="802-11-wireless")) {print $1; exit}'
 }
 
 wifi_connected() {
