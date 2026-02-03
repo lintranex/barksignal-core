@@ -64,17 +64,26 @@ PY
 }
 
 wifi_connected() {
-  # Treat the Hotspot connection as "not connected" so we don't flap it.
-  nmcli -t -f DEVICE,TYPE,STATE,CONNECTION dev status \
-    | grep -E '^wlan0:wifi:connected:' \
-    | grep -v ":${HOTSPOT_NAME}$" \
-    >/dev/null 2>&1
+  # Only treat wlan0 as "connected" if it's in infrastructure mode.
+  local state mode
+  state="$(nmcli -t -f GENERAL.STATE dev show "${IFACE}" 2>/dev/null | cut -d: -f2 | cut -d' ' -f1)"
+  mode="$(nmcli -t -f 802-11-wireless.mode dev show "${IFACE}" 2>/dev/null | cut -d: -f2)"
+  [[ "${state}" == "100" && "${mode}" == "infrastructure" ]]
+}
+
+hotspot_active() {
+  local state mode
+  state="$(nmcli -t -f GENERAL.STATE dev show "${IFACE}" 2>/dev/null | cut -d: -f2 | cut -d' ' -f1)"
+  mode="$(nmcli -t -f 802-11-wireless.mode dev show "${IFACE}" 2>/dev/null | cut -d: -f2)"
+  [[ "${state}" == "100" && "${mode}" == "ap" ]]
 }
 
 start_hotspot() {
   nmcli radio wifi on || true
-  ensure_hotspot_profile
-  nmcli con up "${HOTSPOT_NAME}" || true
+  if ! hotspot_active; then
+    ensure_hotspot_profile
+    nmcli con up "${HOTSPOT_NAME}" || true
+  fi
   ensure_http_redirect
   systemctl start barksignal-portal.service || true
 }
