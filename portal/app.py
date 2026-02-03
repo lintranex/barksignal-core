@@ -227,7 +227,11 @@ def wifi():
     FLAG_WIFI.write_text("ok")
     session["wifi_msg"] = f"WLAN gespeichert ✅ (SSID: {ssid}). Reboot in 5 Sekunden…"
 
-    subprocess.Popen(["bash","-lc","sleep 5; reboot"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(
+        ["bash", "-lc", "sleep 5; systemctl reboot || sudo -n /usr/local/sbin/barksignal-reboot.sh"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     return redirect("/")
 
 @app.route("/login", methods=["POST"])

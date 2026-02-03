@@ -1,0 +1,1 @@
+barksignal ALL=NOPASSWD:/usr/local/sbin/barksignal-reboot.sh

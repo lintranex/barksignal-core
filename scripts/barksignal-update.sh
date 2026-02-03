@@ -49,6 +49,7 @@ install -m 0755 "${REPO_DIR}/scripts/barksignal-guard.sh" /usr/local/sbin/barksi
 install -m 0755 "${REPO_DIR}/scripts/barksignal-update.sh" /usr/local/sbin/barksignal-update.sh
 install -m 0755 "${REPO_DIR}/scripts/barksignal-firstboot.sh" /usr/local/sbin/barksignal-firstboot.sh
 install -m 0755 "${REPO_DIR}/scripts/barksignal-goldenize.sh" /usr/local/sbin/barksignal-goldenize.sh
+install -m 0755 "${REPO_DIR}/scripts/barksignal-reboot.sh" /usr/local/sbin/barksignal-reboot.sh
 
 # update systemd units
 install -m 0644 "${REPO_DIR}/systemd/"*.service /etc/systemd/system/
@@ -58,6 +59,10 @@ install -m 0644 "${REPO_DIR}/systemd/"*.timer /etc/systemd/system/
 mkdir -p /etc/polkit-1/rules.d
 install -m 0644 "${REPO_DIR}/polkit/10-barksignal-nm.rules" /etc/polkit-1/rules.d/10-barksignal-nm.rules
 systemctl restart polkit || true
+
+# update sudoers
+mkdir -p /etc/sudoers.d
+install -m 0440 "${REPO_DIR}/sudoers/10-barksignal-reboot" /etc/sudoers.d/10-barksignal-reboot
 
 systemctl daemon-reload
 systemctl restart barksignal-guard || true

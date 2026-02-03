@@ -26,7 +26,7 @@ ensure_user() {
 
 apt_install() {
   apt-get update
-  apt-get install -y     git rsync curl ca-certificates     python3 python3-venv python3-pip     libportaudio2 alsa-utils     iptables iw     openssh-server     avahi-daemon     network-manager dnsmasq
+  apt-get install -y     git rsync curl ca-certificates     python3 python3-venv python3-pip     libportaudio2 alsa-utils     iptables iw     openssh-server sudo     avahi-daemon     network-manager dnsmasq
 }
 
 configure_networkmanager() {
@@ -72,6 +72,7 @@ install_scripts_services() {
   install -m 0755 "${SRC_DIR}/scripts/barksignal-update.sh" /usr/local/sbin/barksignal-update.sh
   install -m 0755 "${SRC_DIR}/scripts/barksignal-firstboot.sh" /usr/local/sbin/barksignal-firstboot.sh
   install -m 0755 "${SRC_DIR}/scripts/barksignal-goldenize.sh" /usr/local/sbin/barksignal-goldenize.sh
+  install -m 0755 "${SRC_DIR}/scripts/barksignal-reboot.sh" /usr/local/sbin/barksignal-reboot.sh
 
   install -m 0644 "${SRC_DIR}/systemd/barksignal-detector.service" /etc/systemd/system/barksignal-detector.service
   install -m 0644 "${SRC_DIR}/systemd/barksignal-portal.service" /etc/systemd/system/barksignal-portal.service
@@ -85,6 +86,11 @@ install_polkit_rules() {
   mkdir -p /etc/polkit-1/rules.d
   install -m 0644 "${SRC_DIR}/polkit/10-barksignal-nm.rules" /etc/polkit-1/rules.d/10-barksignal-nm.rules
   systemctl restart polkit || true
+}
+
+install_sudoers_rules() {
+  mkdir -p /etc/sudoers.d
+  install -m 0440 "${SRC_DIR}/sudoers/10-barksignal-reboot" /etc/sudoers.d/10-barksignal-reboot
 }
 
 enable_services() {
@@ -106,6 +112,7 @@ main() {
   download_yamnet
   install_scripts_services
   install_polkit_rules
+  install_sudoers_rules
   enable_services
 
   echo
