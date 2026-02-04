@@ -18,6 +18,7 @@ CONFIG_PATH = Path("/home/barksignal/barksignal/config.ini")
 FLAG_WIFI = Path("/home/barksignal/barksignal/.wifi_configured")
 FLAG_DOG  = Path("/home/barksignal/barksignal/.dog_configured")
 PAIRING_STATE_PATH = Path("/home/barksignal/barksignal/.pairing_state.json")
+HEARTBEAT_STATE_PATH = Path("/home/barksignal/barksignal-data/last_heartbeat.json")
 
 CSS = """
 :root{
@@ -243,6 +244,12 @@ TPL = """
       {% endif %}
     </div>
   </div>
+  {% if pairing_msg %}
+    <div class="ok">{{ pairing_msg }}</div>
+  {% endif %}
+  {% if pairing_err %}
+    <div class="err">{{ pairing_err }}</div>
+  {% endif %}
   {% if not wifi_configured %}
     <div class="warnbox">Bitte zuerst WLAN konfigurieren.</div>
   {% elif not internet_ok %}
@@ -250,6 +257,10 @@ TPL = """
   {% else %}
     {% if pairing_status == 'paired' %}
       <div class="ok">Gerät ist verbunden. Dog ID: <code>{{paired_dog_id}}</code></div>
+      <div class="small">Letzter Heartbeat: <code>{{ last_heartbeat_at or 'nie' }}</code></div>
+      <form method="post" action="/unpair" onsubmit="return confirm('Gerät wirklich trennen?')">
+        <button type="submit" class="secondary">Gerät trennen</button>
+      </form>
     {% elif pairing_status == 'pending' %}
       <div class="warnbox">
         Öffne <code>barksignal.com</code> und gib diesen Verbindungscode ein:
@@ -351,6 +362,7 @@ def read_cfg():
         "create_path": g("barksignal","api_dog_create_path","/api/dogs"),
         "pairing_start_path": g("barksignal","api_pairing_start_path","/api/pairing/start"),
         "pairing_status_path": g("barksignal","api_pairing_status_path","/api/pairing/status"),
+        "device_unpair_path": g("barksignal","api_device_unpair_path","/api/device/unpair"),
         "pairing_web_path": g("barksignal","pairing_web_path","/pairing"),
     }
 
@@ -370,11 +382,35 @@ def write_device_token(token: str):
     with open(CONFIG_PATH, "w") as f:
         cp.write(f)
 
+def read_device_token() -> str | None:
+    cp = configparser.ConfigParser()
+    cp.read(CONFIG_PATH)
+    tok = cp.get("barksignal", "api_token", fallback="").strip()
+    return tok or None
+
+def clear_device_token() -> None:
+    cp = configparser.ConfigParser()
+    cp.read(CONFIG_PATH)
+    if "barksignal" in cp and "api_token" in cp["barksignal"]:
+        cp["barksignal"].pop("api_token", None)
+        with open(CONFIG_PATH, "w") as f:
+            cp.write(f)
+
 def read_dog_id() -> str | None:
     cp = configparser.ConfigParser()
     cp.read(CONFIG_PATH)
     dog = cp.get("barksignal", "dog_id", fallback="").strip()
     return dog or None
+
+def read_last_heartbeat() -> str | None:
+    try:
+        if not HEARTBEAT_STATE_PATH.exists():
+            return None
+        data = json.loads(HEARTBEAT_STATE_PATH.read_text())
+        val = str(data.get("last_ok_at") or "").strip()
+        return val or None
+    except Exception:
+        return None
 
 def scan_ssids():
     try:
@@ -639,12 +675,19 @@ def api_create_dog(api_base: str, create_path: str, token: str, name: str|None):
     r.raise_for_status()
     return r.json()
 
+def api_device_unpair(api_base: str, unpair_path: str, token: str):
+    url = api_base.rstrip("/") + unpair_path
+    r = requests.post(url, headers={"Authorization": f"Bearer {token}"}, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
 @app.route("/", methods=["GET"])
 def index():
     ssids = scan_ssids()
     cfg = read_cfg()
     wifi_configured = FLAG_WIFI.exists()
     internet_ok = has_internet(cfg["api_base"]) if wifi_configured else False
+    last_heartbeat_at = read_last_heartbeat()
 
     pairing = {"status": "pending"}
     if wifi_configured and internet_ok:
@@ -670,12 +713,15 @@ def index():
         wifi_msg=session.pop("wifi_msg", None),
         wifi_err=session.pop("wifi_err", None),
         wifi_countdown=session.pop("wifi_countdown", None),
+        pairing_msg=session.pop("pairing_msg", None),
+        pairing_err=session.pop("pairing_err", None),
         wifi_configured=wifi_configured,
         internet_ok=internet_ok,
         pairing_status=pairing.get("status"),
         pairing_code=pairing.get("pairing_code"),
         pairing_expires_at=pairing.get("expires_at"),
         paired_dog_id=pairing.get("dog_id"),
+        last_heartbeat_at=last_heartbeat_at,
         pairing_qr_url=pairing_qr_url,
         pairing_qr_data_uri=pairing_qr_data_uri,
     )
@@ -722,6 +768,35 @@ def reset_wifi():
     remove_state_path(FLAG_WIFI)
     clear_pairing_state()
     session["wifi_msg"] = "WLAN-Konfiguration gelöscht. Hotspot wird wieder aktiv."
+    return redirect("/")
+
+@app.route("/unpair", methods=["POST"])
+def unpair():
+    cfg = read_cfg()
+    wifi_configured = FLAG_WIFI.exists()
+    internet_ok = has_internet(cfg["api_base"]) if wifi_configured else False
+
+    if not wifi_configured or not internet_ok:
+        session["pairing_err"] = "Trennen nicht möglich: kein Internet."
+        return redirect("/")
+
+    token = read_device_token()
+    if not token:
+        session["pairing_err"] = "Trennen nicht möglich: kein Geräte-Token vorhanden."
+        return redirect("/")
+
+    try:
+        api_device_unpair(cfg["api_base"], cfg["device_unpair_path"], token)
+    except Exception as e:
+        session["pairing_err"] = f"Trennen fehlgeschlagen: {e}"
+        return redirect("/")
+
+    write_dog_id("DEMO")
+    clear_device_token()
+    remove_state_path(FLAG_DOG)
+    clear_pairing_state()
+    remove_state_path(HEARTBEAT_STATE_PATH)
+    session["pairing_msg"] = "Gerät wurde getrennt."
     return redirect("/")
 
 @app.route("/pairing/status")

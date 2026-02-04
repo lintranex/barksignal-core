@@ -8,6 +8,7 @@ import time
 import uuid
 import urllib.request
 import socket
+import json
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -51,6 +52,7 @@ class Cfg:
     print_only_hits: bool
     heartbeat_url_template: str
     api_token: str
+    heartbeat_state_path: str
 
 def load_config(path: str) -> Cfg:
     p = Path(path).expanduser()
@@ -93,6 +95,11 @@ def load_config(path: str) -> Cfg:
         fallback="https://www.barksignal.com/api/heartbeat",
     ).strip()
     api_token = cp.get("barksignal", "api_token", fallback="").strip()
+    heartbeat_state_path = cp.get(
+        "heartbeat",
+        "state_path",
+        fallback="/home/barksignal/barksignal-data/last_heartbeat.json",
+    ).strip()
 
     return Cfg(
         model_path=model_path,
@@ -116,6 +123,7 @@ def load_config(path: str) -> Cfg:
         print_only_hits=print_only_hits,
         heartbeat_url_template=heartbeat_url_template,
         api_token=api_token,
+        heartbeat_state_path=heartbeat_state_path,
     )
 
 def load_labels(labels_url: str):
@@ -181,12 +189,13 @@ def send_heartbeat(cfg: Cfg, *, session_active: bool, debug: bool=False) -> bool
     url = heartbeat_url(cfg)
     if not url:
         return False
+    sent_at = datetime.now(timezone.utc).isoformat()
     payload = {
         "dog_id": cfg.dog_id,
         "armed": True,
         "session_active": bool(session_active),
         "hostname": socket.gethostname(),
-        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "sent_at": sent_at,
     }
     try:
         r = requests.post(
@@ -196,6 +205,8 @@ def send_heartbeat(cfg: Cfg, *, session_active: bool, debug: bool=False) -> bool
             headers=auth_headers(cfg),
         )
         ok = 200 <= r.status_code < 300
+        if ok:
+            record_heartbeat_state(cfg, sent_at, session_active)
         if debug:
             print(f"  -> POST {url} status={r.status_code} ok={ok} payload={payload}")
         return ok
@@ -203,6 +214,20 @@ def send_heartbeat(cfg: Cfg, *, session_active: bool, debug: bool=False) -> bool
         if debug:
             print(f"  -> POST ERROR: {e} payload={payload}")
         return False
+
+def record_heartbeat_state(cfg: Cfg, sent_at: str, session_active: bool) -> None:
+    if not cfg.heartbeat_state_path:
+        return
+    try:
+        p = Path(cfg.heartbeat_state_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({
+            "last_ok_at": sent_at,
+            "dog_id": cfg.dog_id,
+            "session_active": bool(session_active),
+        }))
+    except Exception:
+        pass
 
 def main():
     ap = argparse.ArgumentParser()

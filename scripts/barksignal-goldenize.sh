@@ -21,6 +21,7 @@ if [[ -d "${DATA_DIR}" ]]; then
     "${DATA_DIR}/.configured" \
     "${DATA_DIR}/.pairing_state.json" \
     "${DATA_DIR}/.rescue" \
+    "${DATA_DIR}/last_heartbeat.json" \
     || true
 else
   rm -f \
@@ -29,6 +30,7 @@ else
     "${APP_DIR}/.configured" \
     "${APP_DIR}/.pairing_state.json" \
     "${APP_DIR}/.rescue" \
+    "${APP_DIR}/last_heartbeat.json" \
     || true
 fi
 
