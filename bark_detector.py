@@ -7,6 +7,7 @@ import csv
 import time
 import uuid
 import urllib.request
+import socket
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -40,6 +41,7 @@ class Cfg:
 
     heartbeat_sec: float
     bark_end_sec: float
+    status_heartbeat_sec: float
 
     http_timeout: float
     user_agent: str
@@ -47,6 +49,7 @@ class Cfg:
     labels_url: str
     send_session_fields: bool
     print_only_hits: bool
+    heartbeat_url_template: str
 
 def load_config(path: str) -> Cfg:
     p = Path(path).expanduser()
@@ -74,6 +77,7 @@ def load_config(path: str) -> Cfg:
 
     heartbeat_sec = float(cp.get("session", "heartbeat_sec", fallback="20.0"))
     bark_end_sec = float(cp.get("session", "bark_end_sec", fallback="3.0"))
+    status_heartbeat_sec = float(cp.get("heartbeat", "interval_sec", fallback="60.0"))
 
     http_timeout = float(cp.get("http", "timeout_sec", fallback="3.0"))
     user_agent = cp.get("http", "user_agent", fallback="BarkSignal-YAMNet-RPi/1.0")
@@ -82,6 +86,11 @@ def load_config(path: str) -> Cfg:
 
     send_session_fields = cp.getboolean("barksignal", "send_session_fields", fallback=False)
     print_only_hits = cp.getboolean("debug", "print_only_hits", fallback=False)
+    heartbeat_url_template = cp.get(
+        "heartbeat",
+        "url",
+        fallback="https://www.barksignal.com/api/heartbeat",
+    ).strip()
 
     return Cfg(
         model_path=model_path,
@@ -97,11 +106,13 @@ def load_config(path: str) -> Cfg:
         debounce_n=debounce_n,
         heartbeat_sec=heartbeat_sec,
         bark_end_sec=bark_end_sec,
+        status_heartbeat_sec=status_heartbeat_sec,
         http_timeout=http_timeout,
         user_agent=user_agent,
         labels_url=labels_url,
         send_session_fields=send_session_fields,
         print_only_hits=print_only_hits,
+        heartbeat_url_template=heartbeat_url_template,
     )
 
 def load_labels(labels_url: str):
@@ -123,6 +134,9 @@ def score_to_intensity(score: float) -> int:
 def webhook_url(cfg: Cfg) -> str:
     return cfg.webhook_url_template.format(dog_id=cfg.dog_id)
 
+def heartbeat_url(cfg: Cfg) -> str:
+    return cfg.heartbeat_url_template.format(dog_id=cfg.dog_id)
+
 def send_event(cfg: Cfg, intensity: int, *, session_id: Optional[str]=None, event_type: Optional[str]=None, debug: bool=False) -> bool:
     url = webhook_url(cfg)
     payload = {
@@ -134,6 +148,37 @@ def send_event(cfg: Cfg, intensity: int, *, session_id: Optional[str]=None, even
         if session_id: payload["session_id"] = session_id
         if event_type: payload["type"] = event_type
 
+    try:
+        r = requests.post(
+            url,
+            json=payload,
+            timeout=cfg.http_timeout,
+            headers={
+                "User-Agent": cfg.user_agent,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+        )
+        ok = 200 <= r.status_code < 300
+        if debug:
+            print(f"  -> POST {url} status={r.status_code} ok={ok} payload={payload}")
+        return ok
+    except Exception as e:
+        if debug:
+            print(f"  -> POST ERROR: {e} payload={payload}")
+        return False
+
+def send_heartbeat(cfg: Cfg, *, session_active: bool, debug: bool=False) -> bool:
+    url = heartbeat_url(cfg)
+    if not url:
+        return False
+    payload = {
+        "dog_id": cfg.dog_id,
+        "armed": True,
+        "session_active": bool(session_active),
+        "hostname": socket.gethostname(),
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+    }
     try:
         r = requests.post(
             url,
@@ -186,6 +231,7 @@ def main():
         print(f"webhook={webhook_url(cfg)}")
         print(f"Input: {inp['shape']} Output: {out['shape']}")
         print(f"THRESH={cfg.thresh} debounce={cfg.debounce_k}/{cfg.debounce_n} heartbeat={cfg.heartbeat_sec}s end={cfg.bark_end_sec}s")
+        print(f"STATUS_HEARTBEAT={cfg.status_heartbeat_sec}s heartbeat_url={heartbeat_url(cfg)}")
         print(f"INPUT_DEVICE={cfg.input_device} MIC_GAIN={cfg.mic_gain}")
 
     info = sd.query_devices(cfg.input_device, "input")
@@ -197,6 +243,7 @@ def main():
     session_id = None
     last_hit_ts = 0.0
     last_send_ts = 0.0
+    last_status_ts = 0.0
     window_peak = 0.0
     window_cnt = 0
 
@@ -290,6 +337,11 @@ def main():
                     hits.clear()
                     window_peak = 0.0
                     window_cnt = 0
+
+            if cfg.status_heartbeat_sec > 0 and cfg.dog_id.upper() != "DEMO":
+                if (now - last_status_ts) >= cfg.status_heartbeat_sec:
+                    send_heartbeat(cfg, session_active=in_session, debug=debug)
+                    last_status_ts = now
 
 if __name__ == "__main__":
     main()

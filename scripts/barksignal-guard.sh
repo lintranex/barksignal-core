@@ -129,7 +129,6 @@ start_hotspot() {
 }
 
 stop_hotspot() {
-  systemctl stop barksignal-portal.service || true
   remove_http_redirect
   if hotspot_active; then
     nmcli con down "${HOTSPOT_NAME}" >/dev/null 2>&1 || true
@@ -157,12 +156,12 @@ while true; do
 
   if wifi_connected; then
     stop_hotspot
+    systemctl start barksignal-portal.service || true
     if [[ "${DOG_OK}" -eq 1 ]]; then
       stop_detector
       start_detector
     else
       stop_detector
-      systemctl start barksignal-portal.service || true
     fi
   else
     stop_detector
