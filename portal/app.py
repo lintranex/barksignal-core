@@ -146,6 +146,90 @@ def scan_ssids():
     except Exception:
         return []
 
+def scan_wifi_details():
+    try:
+        out = subprocess.check_output(["nmcli","-t","-f","SSID,FREQ,SECURITY","dev","wifi","list"], text=True)
+    except Exception:
+        return {}
+    details = {}
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split(":")
+        if len(parts) < 3:
+            continue
+        ssid = parts[0].strip()
+        if not ssid:
+            continue
+        try:
+            freq = int(parts[1])
+        except Exception:
+            freq = None
+        sec = parts[2].strip()
+        d = details.setdefault(ssid, {"freqs": [], "secs": []})
+        if freq:
+            d["freqs"].append(freq)
+        if sec:
+            d["secs"].append(sec)
+    return details
+
+def get_wifi_caps():
+    caps = {"supports_5ghz": None, "supports_wpa3": None}
+    try:
+        out = subprocess.check_output(["iw","list"], text=True)
+    except Exception:
+        return caps
+    freqs = []
+    for line in out.splitlines():
+        if "MHz" not in line:
+            continue
+        parts = line.strip().split()
+        for p in parts:
+            if p.isdigit():
+                try:
+                    freqs.append(int(p))
+                except Exception:
+                    pass
+                break
+    if freqs:
+        caps["supports_5ghz"] = any(f >= 5000 for f in freqs)
+    caps["supports_wpa3"] = ("SAE" in out) or ("WPA3" in out)
+    return caps
+
+def preflight_wifi(ssid: str, psk: str):
+    if not ssid:
+        return "Bitte SSID auswählen oder eingeben."
+    if len(psk or "") < 8:
+        return "WLAN Passwort muss mindestens 8 Zeichen lang sein."
+
+    details = scan_wifi_details()
+    if ssid not in details:
+        return f"SSID '{ssid}' wurde beim Scan nicht gefunden. Bitte SSID prüfen und erneut versuchen."
+
+    freqs = details[ssid].get("freqs", [])
+    secs = details[ssid].get("secs", [])
+    sec_all = " ".join(secs).upper()
+
+    caps = get_wifi_caps()
+    supports_5ghz = caps.get("supports_5ghz")
+    supports_wpa3 = caps.get("supports_wpa3")
+
+    if freqs:
+        only_5ghz = all(f >= 5000 for f in freqs)
+        if only_5ghz and supports_5ghz is False:
+            return "SSID scheint nur 5 GHz zu unterstützen, dieses Gerät kann aber kein 5 GHz. Bitte 2.4 GHz aktivieren."
+
+    if sec_all:
+        has_wpa3 = ("WPA3" in sec_all) or ("SAE" in sec_all)
+        has_wpa2 = ("WPA2" in sec_all) or ("WPA" in sec_all)
+        if has_wpa3 and not has_wpa2:
+            if supports_wpa3 is False:
+                return "SSID nutzt offenbar WPA3-only. Dieses Gerät unterstützt WPA3 nicht. Bitte WPA2/WPA2-Mixed aktivieren."
+            if supports_wpa3 is None:
+                return "SSID wirkt wie WPA3-only. Gerät-Fähigkeit ist unklar. Bitte WPA2/WPA2-Mixed aktivieren."
+
+    return None
+
 def api_login(api_base: str, login_path: str, email: str, password: str) -> str:
     url = api_base.rstrip("/") + login_path
     r = requests.post(url, json={"email": email, "password": password}, timeout=10)
@@ -207,8 +291,9 @@ def index():
 def wifi():
     ssid = (request.form.get("ssid_select","").strip() or request.form.get("ssid_manual","").strip())
     psk = request.form.get("psk","").strip()
-    if not ssid:
-        session["wifi_err"] = "Bitte SSID auswählen oder eingeben."
+    err = preflight_wifi(ssid, psk)
+    if err:
+        session["wifi_err"] = err
         return redirect("/")
 
     con = "barksignal-wifi"

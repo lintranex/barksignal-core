@@ -7,7 +7,7 @@ Wants=NetworkManager.service
 Type=simple
 User=barksignal
 WorkingDirectory=/home/barksignal/barksignal/portal
-ExecStart=/home/barksignal/venv-barksignal/bin/python /home/barksignal/barksignal/portal/app.py
+ExecStart=/home/barksignal/venv-barksignal/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:8080 --access-logfile - --error-logfile - app:app
 Restart=always
 RestartSec=2
 Environment=PYTHONUNBUFFERED=1

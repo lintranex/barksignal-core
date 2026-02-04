@@ -33,6 +33,32 @@ print(psk)
 PY
 }
 
+get_hotspot_delay_sec() {
+  python3 - <<'PY'
+import configparser
+cp=configparser.ConfigParser()
+cp.read("/home/barksignal/barksignal/config.ini")
+try:
+  val = cp.getint("hotspot","start_delay_sec",fallback=60)
+except Exception:
+  val = 60
+print(max(0, val))
+PY
+}
+
+uptime_seconds() {
+  local up
+  up="$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo 0)"
+  printf '%.0f\n' "${up}"
+}
+
+hotspot_delay_passed() {
+  local delay now
+  delay="$(get_hotspot_delay_sec)"
+  now="$(uptime_seconds)"
+  [[ "${now}" -ge "${delay}" ]]
+}
+
 ensure_hotspot_profile() {
   local ssid psk
   mapfile -t _cfg < <(get_hotspot_cfg)
@@ -140,7 +166,12 @@ while true; do
     fi
   else
     stop_detector
-    start_hotspot
+    if hotspot_delay_passed; then
+      start_hotspot
+    else
+      # Give Wi-Fi a fair chance to connect before starting AP.
+      systemctl stop barksignal-portal.service || true
+    fi
   fi
 
   sleep 5

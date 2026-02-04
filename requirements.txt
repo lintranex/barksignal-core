@@ -4,3 +4,4 @@ sounddevice
 scipy
 requests
 flask
+gunicorn
