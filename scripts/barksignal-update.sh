@@ -44,6 +44,14 @@ fi
 # Copy only code files; NEVER overwrite config.ini
 rsync -a --delete   --exclude "config.ini"   --exclude ".wifi_configured" --exclude ".dog_configured" --exclude ".configured"   "${REPO_DIR}/" "${APP_DIR}/"
 
+# Ensure venv and install deps
+VENV="/home/barksignal/venv-barksignal"
+if [[ ! -x "${VENV}/bin/python" ]]; then
+  sudo -u barksignal python3 -m venv "${VENV}"
+  sudo -u barksignal "${VENV}/bin/pip" install --upgrade pip setuptools wheel
+fi
+sudo -u barksignal "${VENV}/bin/pip" install -r "${APP_DIR}/requirements.txt"
+
 # update system scripts
 install -m 0755 "${REPO_DIR}/scripts/barksignal-guard.sh" /usr/local/sbin/barksignal-guard.sh
 install -m 0755 "${REPO_DIR}/scripts/barksignal-update.sh" /usr/local/sbin/barksignal-update.sh

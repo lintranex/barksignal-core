@@ -6,7 +6,7 @@ import configparser
 from pathlib import Path
 
 import requests
-from flask import Flask, request, redirect, session, render_template_string, Response
+from flask import Flask, request, redirect, session, render_template_string, Response, send_file
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("PORTAL_SECRET", "barksignal-portal-change-me")
@@ -16,79 +16,248 @@ FLAG_WIFI = Path("/home/barksignal/barksignal/.wifi_configured")
 FLAG_DOG  = Path("/home/barksignal/barksignal/.dog_configured")
 
 CSS = """
-body{font-family:system-ui,Arial,sans-serif;max-width:860px;margin:22px auto;padding:0 14px}
-h1{margin:0 0 6px}
-.card{border:1px solid #e5e5e5;border-radius:14px;padding:14px;margin:12px 0}
+:root{
+  --skyTop:#0b1a2b;
+  --skyBottom:#07121f;
+  --accent:#ffcc00;
+  --card-bg:rgba(8,12,22,.58);
+  --card-border:rgba(255,255,255,.12);
+  --text:#ffffff;
+  --text-dim:rgba(255,255,255,.72);
+  --ok:#40d17a;
+  --warn:#ffcc00;
+  --err:#ff6a6a;
+}
+html{
+  background: radial-gradient(900px 600px at 70% 18%, rgba(255, 255, 255, .08), transparent 58%),
+              radial-gradient(900px 600px at 25% 10%, rgba(255, 90, 60, .06), transparent 55%),
+              linear-gradient(180deg, var(--skyTop), var(--skyBottom));
+  background-attachment: fixed;
+}
+body{
+  color:var(--text);
+  font-family:"Avenir Next", "Avenir", "Futura", "Trebuchet MS", sans-serif;
+  max-width:980px;
+  margin:22px auto;
+  padding:0 18px 48px;
+}
+h1,h2,h3{margin:0}
+a{color:var(--accent)}
+.card{
+  background:var(--card-bg);
+  border:1px solid var(--card-border);
+  border-radius:18px;
+  padding:18px;
+  margin:14px 0;
+  box-shadow:0 20px 60px rgba(0,0,0,.22);
+  backdrop-filter: blur(4px);
+}
+.step-head{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:8px;
+}
+.step-num{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:30px;height:30px;
+  border-radius:999px;
+  background:rgba(255,255,255,.1);
+  border:1px solid var(--card-border);
+  font-weight:800;
+}
+.status{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  border:1px solid transparent;
+}
+.status.ok{color:#0b1a2b;background:var(--ok);border-color:rgba(255,255,255,.2)}
+.status.warn{color:#2a1c00;background:var(--warn);border-color:rgba(255,255,255,.2)}
+.status.muted{color:var(--text-dim);background:rgba(255,255,255,.08);border-color:var(--card-border)}
+.small{color:var(--text-dim);font-size:13px;line-height:1.45}
+.err{
+  background:rgba(255,80,80,.14);
+  border:1px solid rgba(255,106,106,.45);
+  padding:10px;border-radius:12px;margin-top:10px
+}
+.ok{
+  background:rgba(64,209,122,.14);
+  border:1px solid rgba(64,209,122,.45);
+  padding:10px;border-radius:12px;margin-top:10px
+}
+.warnbox{
+  background:rgba(255,204,0,.14);
+  border:1px solid rgba(255,204,0,.45);
+  padding:10px;border-radius:12px;margin-top:10px
+}
 label{display:block;margin-top:10px;font-weight:700}
-input,select{width:100%;padding:10px;margin-top:6px}
-button{margin-top:14px;padding:10px 12px;font-weight:800;cursor:pointer}
-.small{color:#555;font-size:13px;line-height:1.45}
-.err{background:#ffe8e8;border:1px solid #ffb3b3;padding:10px;border-radius:12px;margin-top:10px}
-.ok{background:#eefbe8;border:1px solid #b6f0a2;padding:10px;border-radius:12px;margin-top:10px}
+input,select{
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  color:var(--text);
+  background:rgba(255,255,255,.08);
+  border:1px solid var(--card-border);
+  border-radius:10px;
+}
+button{
+  margin-top:14px;
+  padding:10px 14px;
+  font-weight:900;
+  cursor:pointer;
+  border-radius:10px;
+  border:1px solid rgba(0,0,0,.15);
+  background:var(--accent);
+  color:#2a1c00;
+}
+button.secondary{
+  background:rgba(255,255,255,.1);
+  color:var(--text);
+  border:1px solid var(--card-border);
+}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:900px){.row{grid-template-columns:1fr}}
-code{background:#f3f3f3;padding:2px 6px;border-radius:8px}
+code{background:rgba(255,255,255,.12);padding:2px 6px;border-radius:8px}
+.brand{display:flex;justify-content:center}
+header{margin-bottom:3em;margin-top:2em;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+.countdown{font-weight:900;color:var(--accent)}
+.muted{color:var(--text-dim)}
 """
 
 TPL = """
 <!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>BarkSignal Setup</title><style>{{css}}</style></head><body>
-<h1>BarkSignal Setup</h1>
+<header>
+  <div></div>
+  <div class="brand">
+    <div>
+      <img src="/images/barksignal.png" width="200" alt="BarkSignal">
+    </div>
+  </div>
+  <div></div>
+</header>
 
 <div class="card">
-  <h2>1) WLAN konfigurieren</h2>
-  <p class="small">SSID wählen oder manuell eingeben. Danach rebootet der Pi und verbindet sich ins WLAN.</p>
+  <div class="step-head">
+    <span class="step-num">1</span>
+    <div>
+      <h2>{% if wifi_configured %}WLAN Status{% else %}WLAN konfigurieren{% endif %}</h2>
+      <div class="small">Gerät ins Heimnetz bringen</div>
+    </div>
+    <div style="margin-left:auto">
+      {% if wifi_configured and internet_ok %}
+        <span class="status ok">✓ WLAN konfiguriert · Internet ok</span>
+      {% elif wifi_configured and not internet_ok %}
+        <span class="status warn">! WLAN ok · kein Internet</span>
+      {% else %}
+        <span class="status muted">offen</span>
+      {% endif %}
+    </div>
+  </div>
+
   {% if wifi_msg %}<div class="ok">{{wifi_msg}}</div>{% endif %}
   {% if wifi_err %}<div class="err">{{wifi_err}}</div>{% endif %}
+  {% if wifi_countdown %}
+    <div class="warnbox">
+      Bitte WLAN wechseln. Weiterleitung zu <code>http://barksignal.local:8080</code> in
+      <span class="countdown" id="countdown">{{wifi_countdown}}</span> Sekunden.
+    </div>
+  {% endif %}
 
-  <form method="post" action="/wifi">
-    <label>SSID (Dropdown)</label>
-    <select name="ssid_select">
-      <option value="">— auswählen —</option>
-      {% for s in ssids %}<option value="{{s}}">{{s}}</option>{% endfor %}
-    </select>
+  {% if not wifi_configured %}
+    <p class="small">SSID wählen oder manuell eingeben. Danach rebootet der Pi und verbindet sich ins WLAN.</p>
+    <form method="post" action="/wifi">
+      <label>SSID (Dropdown)</label>
+      <select name="ssid_select">
+        <option value="">— auswählen —</option>
+        {% for s in ssids %}<option value="{{s}}">{{s}}</option>{% endfor %}
+      </select>
 
-    <label>SSID (manuell)</label>
-    <input name="ssid_manual" placeholder="Dein WLAN Name">
+      <label>SSID (manuell)</label>
+      <input name="ssid_manual" placeholder="Dein WLAN Name">
 
-    <label>WLAN Passwort</label>
-    <input name="psk" type="password" required>
+      <label>WLAN Passwort</label>
+      <input name="psk" type="password" required>
 
-    <button type="submit">WLAN speichern</button>
-  </form>
-
-  <p class="small">Nach dem Reboot: im selben WLAN <code>http://barksignal.local:8080</code> öffnen (oder IP).</p>
+      <button type="submit">WLAN speichern</button>
+    </form>
+    <p class="small">Nach dem Reboot: im selben WLAN <code>http://barksignal.local:8080</code> öffnen (oder IP).</p>
+  {% else %}
+    {% if not internet_ok %}
+      <div class="warnbox">WLAN ist gespeichert, aber Internet wurde nicht gefunden. Bitte Router/WLAN prüfen.</div>
+    {% endif %}
+    <form method="post" action="/reset-wifi">
+      <button type="submit" class="secondary">WLAN‑Konfiguration löschen</button>
+    </form>
+  {% endif %}
 </div>
 
 <div class="card">
-  <h2>2) BarkSignal Login (Sanctum Token)</h2>
+  <div class="step-head">
+    <span class="step-num">2</span>
+    <div>
+      <h2>BarkSignal Login</h2>
+      <div class="small">Account prüfen und Token holen</div>
+    </div>
+    <div style="margin-left:auto">
+      {% if token %}
+        <span class="status ok">✓ angemeldet</span>
+      {% elif wifi_configured and internet_ok %}
+        <span class="status muted">bereit</span>
+      {% else %}
+        <span class="status warn">wartet auf Internet</span>
+      {% endif %}
+    </div>
+  </div>
   <p class="small">Login funktioniert erst, wenn der Pi Internet hat.</p>
 
   {% if login_err %}<div class="err">{{login_err}}</div>{% endif %}
   {% if token_ok %}<div class="ok">{{token_ok}}</div>{% endif %}
 
-  {% if not token %}
-    <form method="post" action="/login">
-      <div class="row">
-        <div>
-          <label>E-Mail</label>
-          <input name="email" required>
-        </div>
-        <div>
-          <label>Passwort</label>
-          <input name="password" type="password" required>
-        </div>
-      </div>
-      <button type="submit">Anmelden</button>
-    </form>
+  {% if not wifi_configured %}
+    <div class="warnbox">Bitte zuerst WLAN konfigurieren.</div>
+  {% elif not internet_ok %}
+    <div class="warnbox">WLAN ist konfiguriert, aber kein Internet. Login ist derzeit nicht möglich.</div>
   {% else %}
-    <form method="post" action="/logout"><button type="submit">Abmelden</button></form>
+    {% if not token %}
+      <form method="post" action="/login">
+        <div class="row">
+          <div>
+            <label>E-Mail</label>
+            <input name="email" required>
+          </div>
+          <div>
+            <label>Passwort</label>
+            <input name="password" type="password" required>
+          </div>
+        </div>
+        <button type="submit">Anmelden</button>
+      </form>
+    {% else %}
+      <form method="post" action="/logout"><button type="submit">Abmelden</button></form>
+    {% endif %}
   {% endif %}
 </div>
 
 {% if token %}
 <div class="card">
-  <h2>3) Hund auswählen oder anlegen</h2>
+  <div class="step-head">
+    <span class="step-num">3</span>
+    <div>
+      <h2>Hund auswählen oder anlegen</h2>
+      <div class="small">DOG_ID konfigurieren</div>
+    </div>
+    <div style="margin-left:auto">
+      <span class="status muted">optional</span>
+    </div>
+  </div>
   {% if dog_err %}<div class="err">{{dog_err}}</div>{% endif %}
   {% if dog_ok %}<div class="ok">{{dog_ok}}</div>{% endif %}
 
@@ -114,7 +283,29 @@ TPL = """
 </div>
 {% endif %}
 
-<p class="small">Tipp: Wenn Captive Portal nicht automatisch aufgeht, öffne z.B. <code>http://10.42.0.1</code></p>
+<p class="small">Tipp: Wenn Captive Portal nicht automatisch aufgeht, öffne <code>http://10.42.0.1</code></p>
+
+{% if wifi_countdown %}
+<script>
+  (function(){
+    var el = document.getElementById("countdown");
+    if (!el) return;
+    var remaining = parseInt(el.textContent, 10) || 0;
+    var target = "http://barksignal.local:8080";
+    var tick = function(){
+      remaining -= 1;
+      if (remaining <= 0){
+        el.textContent = "0";
+        window.location.href = target;
+        return;
+      }
+      el.textContent = String(remaining);
+      setTimeout(tick, 1000);
+    };
+    setTimeout(tick, 1000);
+  })();
+</script>
+{% endif %}
 </body></html>
 """
 
@@ -172,6 +363,13 @@ def scan_wifi_details():
         if sec:
             d["secs"].append(sec)
     return details
+
+def has_internet(api_base: str) -> bool:
+    try:
+        r = requests.get(api_base, timeout=2)
+        return r.status_code < 500
+    except Exception:
+        return False
 
 def get_wifi_caps():
     caps = {"supports_5ghz": None, "supports_wpa3": None}
@@ -263,6 +461,8 @@ def api_create_dog(api_base: str, create_path: str, token: str, name: str|None):
 def index():
     ssids = scan_ssids()
     cfg = read_cfg()
+    wifi_configured = FLAG_WIFI.exists()
+    internet_ok = has_internet(cfg["api_base"]) if wifi_configured else False
 
     token = session.get("token")
     dogs = []
@@ -279,6 +479,9 @@ def index():
         ssids=ssids,
         wifi_msg=session.pop("wifi_msg", None),
         wifi_err=session.pop("wifi_err", None),
+        wifi_countdown=session.pop("wifi_countdown", None),
+        wifi_configured=wifi_configured,
+        internet_ok=internet_ok,
         login_err=session.pop("login_err", None),
         token_ok=session.pop("token_ok", None),
         dog_ok=session.pop("dog_ok", None),
@@ -310,7 +513,8 @@ def wifi():
     subprocess.run(["nmcli","con","modify",con,"connection.autoconnect","yes"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     FLAG_WIFI.write_text("ok")
-    session["wifi_msg"] = f"WLAN gespeichert ✅ (SSID: {ssid}). Reboot in 5 Sekunden…"
+    session["wifi_msg"] = f"WLAN gespeichert (SSID: {ssid}). Der Pi startet neu."
+    session["wifi_countdown"] = 90
 
     subprocess.Popen(
         ["bash", "-lc", "sleep 5; systemctl reboot || sudo -n /usr/local/sbin/barksignal-reboot.sh"],
@@ -318,6 +522,27 @@ def wifi():
         stderr=subprocess.DEVNULL,
     )
     return redirect("/")
+
+@app.route("/reset-wifi", methods=["POST"])
+def reset_wifi():
+    try:
+        subprocess.run(["nmcli","con","delete","barksignal-wifi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+    try:
+        if FLAG_WIFI.exists():
+            FLAG_WIFI.unlink()
+    except Exception:
+        pass
+    session["wifi_msg"] = "WLAN-Konfiguration gelöscht. Hotspot wird wieder aktiv."
+    return redirect("/")
+
+@app.route("/images/barksignal.png")
+def brand_image():
+    img = Path(__file__).parent / "barksignal.png"
+    if not img.exists():
+        return Response(status=404)
+    return send_file(img, mimetype="image/png")
 
 @app.route("/login", methods=["POST"])
 def login():
