@@ -28,6 +28,7 @@ CSS = """
   --warn:#ffcc00;
   --err:#ff6a6a;
 }
+*{box-sizing:border-box}
 html{
   background: radial-gradient(900px 600px at 70% 18%, rgba(255, 255, 255, .08), transparent 58%),
               radial-gradient(900px 600px at 25% 10%, rgba(255, 90, 60, .06), transparent 55%),
@@ -36,7 +37,7 @@ html{
 }
 body{
   color:var(--text);
-  font-family:"Avenir Next", "Avenir", "Futura", "Trebuchet MS", sans-serif;
+  font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   max-width:980px;
   margin:22px auto;
   padding:0 18px 48px;
@@ -133,7 +134,9 @@ header{margin-bottom:3em;margin-top:2em;display:grid;grid-template-columns:1fr a
 
 TPL = """
 <!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>BarkSignal Setup</title><style>{{css}}</style></head><body>
+<title>BarkSignal Setup</title>
+<link rel="icon" type="image/png" href="/images/barksignal.png">
+<style>{{css}}</style></head><body>
 <header>
   <div></div>
   <div class="brand">
@@ -539,6 +542,13 @@ def reset_wifi():
 
 @app.route("/images/barksignal.png")
 def brand_image():
+    img = Path(__file__).parent / "barksignal.png"
+    if not img.exists():
+        return Response(status=404)
+    return send_file(img, mimetype="image/png")
+
+@app.route("/favicon.ico")
+def favicon():
     img = Path(__file__).parent / "barksignal.png"
     if not img.exists():
         return Response(status=404)
