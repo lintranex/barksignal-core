@@ -50,6 +50,7 @@ class Cfg:
     send_session_fields: bool
     print_only_hits: bool
     heartbeat_url_template: str
+    api_token: str
 
 def load_config(path: str) -> Cfg:
     p = Path(path).expanduser()
@@ -91,6 +92,7 @@ def load_config(path: str) -> Cfg:
         "url",
         fallback="https://www.barksignal.com/api/heartbeat",
     ).strip()
+    api_token = cp.get("barksignal", "api_token", fallback="").strip()
 
     return Cfg(
         model_path=model_path,
@@ -113,6 +115,7 @@ def load_config(path: str) -> Cfg:
         send_session_fields=send_session_fields,
         print_only_hits=print_only_hits,
         heartbeat_url_template=heartbeat_url_template,
+        api_token=api_token,
     )
 
 def load_labels(labels_url: str):
@@ -137,6 +140,16 @@ def webhook_url(cfg: Cfg) -> str:
 def heartbeat_url(cfg: Cfg) -> str:
     return cfg.heartbeat_url_template.format(dog_id=cfg.dog_id)
 
+def auth_headers(cfg: Cfg) -> dict:
+    headers = {
+        "User-Agent": cfg.user_agent,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if cfg.api_token:
+        headers["Authorization"] = f"Bearer {cfg.api_token}"
+    return headers
+
 def send_event(cfg: Cfg, intensity: int, *, session_id: Optional[str]=None, event_type: Optional[str]=None, debug: bool=False) -> bool:
     url = webhook_url(cfg)
     payload = {
@@ -153,11 +166,7 @@ def send_event(cfg: Cfg, intensity: int, *, session_id: Optional[str]=None, even
             url,
             json=payload,
             timeout=cfg.http_timeout,
-            headers={
-                "User-Agent": cfg.user_agent,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
+            headers=auth_headers(cfg),
         )
         ok = 200 <= r.status_code < 300
         if debug:
@@ -184,11 +193,7 @@ def send_heartbeat(cfg: Cfg, *, session_active: bool, debug: bool=False) -> bool
             url,
             json=payload,
             timeout=cfg.http_timeout,
-            headers={
-                "User-Agent": cfg.user_agent,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
+            headers=auth_headers(cfg),
         )
         ok = 200 <= r.status_code < 300
         if debug:

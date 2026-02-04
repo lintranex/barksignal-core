@@ -2,6 +2,11 @@
 set -euo pipefail
 
 APP_DIR="/home/barksignal/barksignal"
+DATA_DIR="/home/barksignal/barksignal-data"
+CFG="${DATA_DIR}/config.ini"
+if [[ ! -f "${CFG}" ]]; then
+  CFG="${APP_DIR}/config.ini"
+fi
 
 systemctl stop barksignal-detector.service || true
 systemctl stop barksignal-portal.service || true
@@ -9,11 +14,27 @@ systemctl stop barksignal-guard.service || true
 systemctl stop barksignal-update.timer || true
 systemctl stop barksignal-update.service || true
 
-rm -f "${APP_DIR}/.wifi_configured" "${APP_DIR}/.dog_configured" "${APP_DIR}/.configured" || true
+if [[ -d "${DATA_DIR}" ]]; then
+  rm -f \
+    "${DATA_DIR}/.wifi_configured" \
+    "${DATA_DIR}/.dog_configured" \
+    "${DATA_DIR}/.configured" \
+    "${DATA_DIR}/.pairing_state.json" \
+    "${DATA_DIR}/.rescue" \
+    || true
+else
+  rm -f \
+    "${APP_DIR}/.wifi_configured" \
+    "${APP_DIR}/.dog_configured" \
+    "${APP_DIR}/.configured" \
+    "${APP_DIR}/.pairing_state.json" \
+    "${APP_DIR}/.rescue" \
+    || true
+fi
 
-python3 - <<'PY'
+CFG_PATH="${CFG}" python3 - <<'PY'
 import configparser
-p="/home/barksignal/barksignal/config.ini"
+p = __import__("os").environ["CFG_PATH"]
 cp=configparser.ConfigParser()
 cp.read(p)
 if "barksignal" not in cp: cp["barksignal"]={}

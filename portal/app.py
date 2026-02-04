@@ -362,6 +362,14 @@ def write_dog_id(dog_id: str):
     with open(CONFIG_PATH, "w") as f:
         cp.write(f)
 
+def write_device_token(token: str):
+    cp = configparser.ConfigParser()
+    cp.read(CONFIG_PATH)
+    if "barksignal" not in cp: cp["barksignal"] = {}
+    cp["barksignal"]["api_token"] = token
+    with open(CONFIG_PATH, "w") as f:
+        cp.write(f)
+
 def read_dog_id() -> str | None:
     cp = configparser.ConfigParser()
     cp.read(CONFIG_PATH)
@@ -443,10 +451,25 @@ def save_pairing_state(data: dict) -> None:
     except Exception:
         pass
 
+def remove_state_path(path: Path) -> None:
+    try:
+        target = path.resolve()
+    except Exception:
+        target = path
+    try:
+        if target.exists():
+            target.unlink()
+    except Exception:
+        pass
+    try:
+        if path.is_symlink():
+            path.unlink()
+    except Exception:
+        pass
+
 def clear_pairing_state() -> None:
     try:
-        if PAIRING_STATE_PATH.exists():
-            PAIRING_STATE_PATH.unlink()
+        remove_state_path(PAIRING_STATE_PATH)
     except Exception:
         pass
 
@@ -470,9 +493,9 @@ def api_pairing_start(api_base: str, start_path: str, serial_number: str) -> dic
     r.raise_for_status()
     return r.json()
 
-def api_pairing_status(api_base: str, status_path: str, signal_device_id: str) -> dict:
+def api_pairing_status(api_base: str, status_path: str, signal_device_id: str, serial_number: str) -> dict:
     url = api_base.rstrip("/") + status_path.rstrip("/") + "/" + signal_device_id
-    r = requests.get(url, timeout=5)
+    r = requests.get(url, params={"serial_number": serial_number}, timeout=5)
     r.raise_for_status()
     return r.json()
 
@@ -489,6 +512,8 @@ def ensure_pairing(cfg: dict) -> dict:
             if dog_id:
                 write_dog_id(dog_id)
                 FLAG_DOG.write_text("ok")
+            if data.get("device_token"):
+                write_device_token(data["device_token"])
             return {"status": "paired", "dog_id": dog_id}
         if data.get("status") == "pending":
             state = {
@@ -501,12 +526,19 @@ def ensure_pairing(cfg: dict) -> dict:
             return {"status": "error"}
 
     if state and state.get("signal_device_id"):
-        data = api_pairing_status(cfg["api_base"], cfg["pairing_status_path"], state["signal_device_id"])
+        data = api_pairing_status(
+            cfg["api_base"],
+            cfg["pairing_status_path"],
+            state["signal_device_id"],
+            get_serial_number(),
+        )
         if data.get("status") == "paired":
             dog_id = data.get("dog_id")
             if dog_id:
                 write_dog_id(dog_id)
                 FLAG_DOG.write_text("ok")
+            if data.get("device_token"):
+                write_device_token(data["device_token"])
             clear_pairing_state()
             return {"status": "paired", "dog_id": dog_id}
         if data.get("status") == "expired":
@@ -687,11 +719,7 @@ def reset_wifi():
         subprocess.run(["nmcli","con","delete","barksignal-wifi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
-    try:
-        if FLAG_WIFI.exists():
-            FLAG_WIFI.unlink()
-    except Exception:
-        pass
+    remove_state_path(FLAG_WIFI)
     clear_pairing_state()
     session["wifi_msg"] = "WLAN-Konfiguration gelöscht. Hotspot wird wieder aktiv."
     return redirect("/")

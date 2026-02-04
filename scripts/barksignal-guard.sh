@@ -2,8 +2,10 @@
 set -euo pipefail
 
 APP_DIR="/home/barksignal/barksignal"
+DATA_DIR="/home/barksignal/barksignal-data"
 FLAG_DOG="${APP_DIR}/.dog_configured"
 CONFIG="${APP_DIR}/config.ini"
+FLAG_RESCUE="${DATA_DIR}/.rescue"
 
 IFACE="wlan0"
 HOTSPOT_NAME="Hotspot"   # NetworkManager internal hotspot name
@@ -144,6 +146,13 @@ stop_detector() {
 }
 
 while true; do
+  if [[ -f "${FLAG_RESCUE}" ]]; then
+    stop_detector
+    start_hotspot
+    sleep 5
+    continue
+  fi
+
   DOG_OK=0
   [[ -f "${FLAG_DOG}" ]] && DOG_OK=1
 

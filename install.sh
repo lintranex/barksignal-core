@@ -73,6 +73,7 @@ install_scripts_services() {
   install -m 0755 "${SRC_DIR}/scripts/barksignal-firstboot.sh" /usr/local/sbin/barksignal-firstboot.sh
   install -m 0755 "${SRC_DIR}/scripts/barksignal-goldenize.sh" /usr/local/sbin/barksignal-goldenize.sh
   install -m 0755 "${SRC_DIR}/scripts/barksignal-reboot.sh" /usr/local/sbin/barksignal-reboot.sh
+  install -m 0755 "${SRC_DIR}/scripts/barksignal-healthcheck.sh" /usr/local/sbin/barksignal-healthcheck.sh
 
   install -m 0644 "${SRC_DIR}/systemd/barksignal-detector.service" /etc/systemd/system/barksignal-detector.service
   install -m 0644 "${SRC_DIR}/systemd/barksignal-portal.service" /etc/systemd/system/barksignal-portal.service
