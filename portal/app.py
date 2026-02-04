@@ -3,10 +3,13 @@
 import os
 import subprocess
 import configparser
+import json
+import base64
+import io
 from pathlib import Path
 
 import requests
-from flask import Flask, request, redirect, session, render_template_string, Response, send_file
+from flask import Flask, request, redirect, session, render_template_string, Response, send_file, jsonify
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("PORTAL_SECRET", "barksignal-portal-change-me")
@@ -14,6 +17,7 @@ app.secret_key = os.environ.get("PORTAL_SECRET", "barksignal-portal-change-me")
 CONFIG_PATH = Path("/home/barksignal/barksignal/config.ini")
 FLAG_WIFI = Path("/home/barksignal/barksignal/.wifi_configured")
 FLAG_DOG  = Path("/home/barksignal/barksignal/.dog_configured")
+PAIRING_STATE_PATH = Path("/home/barksignal/barksignal/.pairing_state.json")
 
 CSS = """
 :root{
@@ -130,6 +134,26 @@ code{background:rgba(255,255,255,.12);padding:2px 6px;border-radius:8px}
 header{margin-bottom:3em;margin-top:2em;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
 .countdown{font-weight:900;color:var(--accent)}
 .muted{color:var(--text-dim)}
+.code-box{
+  font-weight:900;
+  letter-spacing:2px;
+  font-size:28px;
+  display:inline-block;
+  padding:10px 14px;
+  border-radius:12px;
+  background:rgba(255,255,255,.08);
+  border:1px solid var(--card-border);
+  margin:8px 0;
+}
+.qr{
+  width:180px;
+  height:180px;
+  display:block;
+  margin:10px 0;
+  border-radius:12px;
+  border:1px solid var(--card-border);
+  background:#fff;
+}
 """
 
 TPL = """
@@ -206,85 +230,67 @@ TPL = """
   <div class="step-head">
     <span class="step-num">2</span>
     <div>
-      <h2>BarkSignal Login</h2>
-      <div class="small">Account prüfen und Token holen</div>
+      <h2>Gerät verbinden</h2>
+      <div class="small">Verbindungscode auf der Plattform eingeben</div>
     </div>
     <div style="margin-left:auto">
-      {% if token %}
-        <span class="status ok">✓ angemeldet</span>
+      {% if pairing_status == 'paired' %}
+        <span class="status ok">✓ verbunden</span>
       {% elif wifi_configured and internet_ok %}
-        <span class="status muted">bereit</span>
+        <span class="status muted">wartet</span>
       {% else %}
         <span class="status warn">wartet auf Internet</span>
       {% endif %}
     </div>
   </div>
-  <p class="small">Login funktioniert erst, wenn der Pi Internet hat.</p>
-
-  {% if login_err %}<div class="err">{{login_err}}</div>{% endif %}
-  {% if token_ok %}<div class="ok">{{token_ok}}</div>{% endif %}
-
   {% if not wifi_configured %}
     <div class="warnbox">Bitte zuerst WLAN konfigurieren.</div>
   {% elif not internet_ok %}
-    <div class="warnbox">WLAN ist konfiguriert, aber kein Internet. Login ist derzeit nicht möglich.</div>
+    <div class="warnbox">WLAN ist konfiguriert, aber kein Internet. Verbindungscode kann nicht erstellt werden.</div>
   {% else %}
-    {% if not token %}
-      <form method="post" action="/login">
-        <div class="row">
-          <div>
-            <label>E-Mail</label>
-            <input name="email" required>
-          </div>
-          <div>
-            <label>Passwort</label>
-            <input name="password" type="password" required>
-          </div>
-        </div>
-        <button type="submit">Anmelden</button>
-      </form>
+    {% if pairing_status == 'paired' %}
+      <div class="ok">Gerät ist verbunden. Dog ID: <code>{{paired_dog_id}}</code></div>
+    {% elif pairing_status == 'pending' %}
+      <div class="warnbox">
+        Öffne <code>barksignal.com</code> und gib diesen Verbindungscode ein:
+        <div class="code-box" id="pairing-code">{{pairing_code}}</div>
+        <div class="small">Gültig bis {{pairing_expires_at}}</div>
+        {% if pairing_qr_data_uri %}
+          <div class="small">Oder QR-Code scannen:</div>
+          <img class="qr" src="{{pairing_qr_data_uri}}" alt="QR code">
+          <div class="small muted">{{pairing_qr_url}}</div>
+        {% elif pairing_qr_url %}
+          <div class="small">Link: <code>{{pairing_qr_url}}</code></div>
+        {% endif %}
+        <div class="small muted" id="pairing-status">Warte auf Bestätigung…</div>
+      </div>
     {% else %}
-      <form method="post" action="/logout"><button type="submit">Abmelden</button></form>
+      <div class="warnbox">Verbindungscode wird vorbereitet…</div>
     {% endif %}
   {% endif %}
 </div>
 
-{% if token %}
 <div class="card">
   <div class="step-head">
     <span class="step-num">3</span>
     <div>
-      <h2>Hund auswählen oder anlegen</h2>
-      <div class="small">DOG_ID konfigurieren</div>
+      <h2>Fertig</h2>
+      <div class="small">Gerät ist bereit</div>
     </div>
     <div style="margin-left:auto">
-      <span class="status muted">optional</span>
+      {% if pairing_status == 'paired' %}
+        <span class="status ok">✓ abgeschlossen</span>
+      {% else %}
+        <span class="status muted">wartet</span>
+      {% endif %}
     </div>
   </div>
-  {% if dog_err %}<div class="err">{{dog_err}}</div>{% endif %}
-  {% if dog_ok %}<div class="ok">{{dog_ok}}</div>{% endif %}
-
-  <form method="post" action="/select-dog">
-    <label>Hund auswählen</label>
-    <select name="dog_id" required>
-      {% for d in dogs %}
-        <option value="{{d['id']}}">{{d.get('name','(ohne Name)')}} — {{d['id']}}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">DOG_ID setzen</button>
-  </form>
-
-  <hr>
-
-  <form method="post" action="/create-dog">
-    <label>Neuen Hund anlegen (Name optional)</label>
-    <input name="name" placeholder="z.B. Dorli">
-    <button type="submit">Hund anlegen</button>
-  </form>
-
-  <p class="small">Webhook-Base ist fix. Es wird nur <code>dog_id</code> gesetzt.</p>
+  {% if pairing_status == 'paired' %}
+    <div class="ok">Setup abgeschlossen. Du kannst dieses Fenster schließen.</div>
+  {% else %}
+    <div class="warnbox">Warte auf die Bestätigung auf der Plattform.</div>
+  {% endif %}
 </div>
-{% endif %}
 
 <p class="small">Tipp: Wenn Captive Portal nicht automatisch aufgeht, öffne <code>http://10.42.0.1</code></p>
 
@@ -309,6 +315,26 @@ TPL = """
   })();
 </script>
 {% endif %}
+
+{% if pairing_status == 'pending' %}
+<script>
+  (function(){
+    function poll(){
+      fetch("/pairing/status")
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if (d.status === "paired" || d.status === "expired") {
+            window.location.reload();
+            return;
+          }
+          setTimeout(poll, 3000);
+        })
+        .catch(function(){ setTimeout(poll, 5000); });
+    }
+    setTimeout(poll, 3000);
+  })();
+</script>
+{% endif %}
 </body></html>
 """
 
@@ -319,9 +345,13 @@ def read_cfg():
         return cp.get(s,k,fallback=default)
     return {
         "api_base": g("barksignal","api_base","https://www.barksignal.com"),
+        "pairing_web_base": g("barksignal","pairing_web_base","https://www.barksignal.com"),
         "login_path": g("barksignal","api_login_path","/api/login"),
         "dogs_path": g("barksignal","api_dogs_path","/api/dogs"),
         "create_path": g("barksignal","api_dog_create_path","/api/dogs"),
+        "pairing_start_path": g("barksignal","api_pairing_start_path","/api/pairing/start"),
+        "pairing_status_path": g("barksignal","api_pairing_status_path","/api/pairing/status"),
+        "pairing_web_path": g("barksignal","pairing_web_path","/pairing"),
     }
 
 def write_dog_id(dog_id: str):
@@ -331,6 +361,12 @@ def write_dog_id(dog_id: str):
     cp["barksignal"]["dog_id"] = dog_id
     with open(CONFIG_PATH, "w") as f:
         cp.write(f)
+
+def read_dog_id() -> str | None:
+    cp = configparser.ConfigParser()
+    cp.read(CONFIG_PATH)
+    dog = cp.get("barksignal", "dog_id", fallback="").strip()
+    return dog or None
 
 def scan_ssids():
     try:
@@ -373,6 +409,117 @@ def has_internet(api_base: str) -> bool:
         return r.status_code < 500
     except Exception:
         return False
+
+def get_serial_number() -> str:
+    try:
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if line.lower().startswith("serial"):
+                    val = line.split(":", 1)[-1].strip()
+                    if val:
+                        return val
+    except Exception:
+        pass
+    try:
+        with open("/etc/machine-id", "r") as f:
+            val = f.read().strip()
+            if val:
+                return val
+    except Exception:
+        pass
+    return subprocess.check_output(["hostname"], text=True).strip()
+
+def load_pairing_state() -> dict | None:
+    try:
+        if not PAIRING_STATE_PATH.exists():
+            return None
+        return json.loads(PAIRING_STATE_PATH.read_text())
+    except Exception:
+        return None
+
+def save_pairing_state(data: dict) -> None:
+    try:
+        PAIRING_STATE_PATH.write_text(json.dumps(data))
+    except Exception:
+        pass
+
+def clear_pairing_state() -> None:
+    try:
+        if PAIRING_STATE_PATH.exists():
+            PAIRING_STATE_PATH.unlink()
+    except Exception:
+        pass
+
+def make_qr_data_uri(text: str) -> str | None:
+    try:
+        import segno
+    except Exception:
+        return None
+    try:
+        qr = segno.make(text, error="M")
+        buf = io.BytesIO()
+        qr.save(buf, kind="svg", scale=4, border=2)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/svg+xml;base64,{b64}"
+    except Exception:
+        return None
+
+def api_pairing_start(api_base: str, start_path: str, serial_number: str) -> dict:
+    url = api_base.rstrip("/") + start_path
+    r = requests.post(url, json={"serial_number": serial_number}, timeout=5)
+    r.raise_for_status()
+    return r.json()
+
+def api_pairing_status(api_base: str, status_path: str, signal_device_id: str) -> dict:
+    url = api_base.rstrip("/") + status_path.rstrip("/") + "/" + signal_device_id
+    r = requests.get(url, timeout=5)
+    r.raise_for_status()
+    return r.json()
+
+def ensure_pairing(cfg: dict) -> dict:
+    dog_id = read_dog_id()
+    if dog_id and dog_id.upper() != "DEMO":
+        return {"status": "paired", "dog_id": dog_id}
+
+    state = load_pairing_state()
+    if not state:
+        data = api_pairing_start(cfg["api_base"], cfg["pairing_start_path"], get_serial_number())
+        if data.get("status") == "paired":
+            dog_id = data.get("dog_id")
+            if dog_id:
+                write_dog_id(dog_id)
+                FLAG_DOG.write_text("ok")
+            return {"status": "paired", "dog_id": dog_id}
+        if data.get("status") == "pending":
+            state = {
+                "signal_device_id": data.get("signal_device_id"),
+                "pairing_code": data.get("pairing_code"),
+                "expires_at": data.get("expires_at"),
+            }
+            save_pairing_state(state)
+        else:
+            return {"status": "error"}
+
+    if state and state.get("signal_device_id"):
+        data = api_pairing_status(cfg["api_base"], cfg["pairing_status_path"], state["signal_device_id"])
+        if data.get("status") == "paired":
+            dog_id = data.get("dog_id")
+            if dog_id:
+                write_dog_id(dog_id)
+                FLAG_DOG.write_text("ok")
+            clear_pairing_state()
+            return {"status": "paired", "dog_id": dog_id}
+        if data.get("status") == "expired":
+            clear_pairing_state()
+            # start a new code immediately
+            return ensure_pairing(cfg)
+        return {
+            "status": data.get("status", "pending"),
+            "pairing_code": state.get("pairing_code"),
+            "expires_at": state.get("expires_at"),
+        }
+
+    return {"status": "pending"}
 
 def get_wifi_caps():
     caps = {"supports_5ghz": None, "supports_wpa3": None}
@@ -467,14 +614,22 @@ def index():
     wifi_configured = FLAG_WIFI.exists()
     internet_ok = has_internet(cfg["api_base"]) if wifi_configured else False
 
-    token = session.get("token")
-    dogs = []
-    dog_err = None
-    if token:
+    pairing = {"status": "pending"}
+    if wifi_configured and internet_ok:
         try:
-            dogs = api_get_dogs(cfg["api_base"], cfg["dogs_path"], token)
-        except Exception as e:
-            dog_err = str(e)
+            pairing = ensure_pairing(cfg)
+        except Exception:
+            pairing = {"status": "error"}
+
+    pairing_qr_url = None
+    pairing_qr_data_uri = None
+    if pairing.get("status") == "pending" and pairing.get("pairing_code"):
+        base = cfg.get("pairing_web_base", cfg["api_base"]).rstrip("/")
+        path = cfg.get("pairing_web_path", "/pairing")
+        if not path.startswith("/"):
+            path = "/" + path
+        pairing_qr_url = f"{base}{path}?code={pairing.get('pairing_code')}"
+        pairing_qr_data_uri = make_qr_data_uri(pairing_qr_url)
 
     return render_template_string(
         TPL,
@@ -485,12 +640,12 @@ def index():
         wifi_countdown=session.pop("wifi_countdown", None),
         wifi_configured=wifi_configured,
         internet_ok=internet_ok,
-        login_err=session.pop("login_err", None),
-        token_ok=session.pop("token_ok", None),
-        dog_ok=session.pop("dog_ok", None),
-        dog_err=dog_err,
-        token=token,
-        dogs=dogs,
+        pairing_status=pairing.get("status"),
+        pairing_code=pairing.get("pairing_code"),
+        pairing_expires_at=pairing.get("expires_at"),
+        paired_dog_id=pairing.get("dog_id"),
+        pairing_qr_url=pairing_qr_url,
+        pairing_qr_data_uri=pairing_qr_data_uri,
     )
 
 @app.route("/wifi", methods=["POST"])
@@ -537,8 +692,24 @@ def reset_wifi():
             FLAG_WIFI.unlink()
     except Exception:
         pass
+    clear_pairing_state()
     session["wifi_msg"] = "WLAN-Konfiguration gelöscht. Hotspot wird wieder aktiv."
     return redirect("/")
+
+@app.route("/pairing/status")
+def pairing_status():
+    cfg = read_cfg()
+    wifi_configured = FLAG_WIFI.exists()
+    internet_ok = has_internet(cfg["api_base"]) if wifi_configured else False
+    if not wifi_configured:
+        return jsonify({"status": "no-wifi"})
+    if not internet_ok:
+        return jsonify({"status": "offline"})
+    try:
+        data = ensure_pairing(cfg)
+        return jsonify(data)
+    except Exception:
+        return jsonify({"status": "error"})
 
 @app.route("/images/barksignal.png")
 def brand_image():

@@ -5,3 +5,4 @@ scipy
 requests
 flask
 gunicorn
+segno
