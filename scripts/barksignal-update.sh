@@ -174,6 +174,12 @@ if [[ ! -x "${VENV}/bin/python" ]]; then
 fi
 sudo -u barksignal "${VENV}/bin/pip" install -r "${APP_DIR}/requirements.txt"
 
+# Ensure model file exists (download once into data dir)
+if [[ ! -f "${DATA_DIR}/yamnet.tflite" ]]; then
+  log "download yamnet.tflite"
+  sudo -u barksignal curl -fL "https://storage.googleapis.com/audioset/yamnet.tflite" -o "${DATA_DIR}/yamnet.tflite"
+fi
+
 # update system scripts
 install -m 0755 "${REPO_DIR}/scripts/barksignal-guard.sh" /usr/local/sbin/barksignal-guard.sh
 install -m 0755 "${REPO_DIR}/scripts/barksignal-update.sh" /usr/local/sbin/barksignal-update.sh
