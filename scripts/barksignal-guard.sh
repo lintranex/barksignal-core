@@ -82,8 +82,18 @@ hotspot_active() {
   [[ "${name}" == "${HOTSPOT_NAME}" ]]
 }
 
+wifi_radio_enabled() {
+  nmcli -t -f WIFI radio 2>/dev/null | grep -qi "^enabled$"
+}
+
+ensure_wifi_radio_on() {
+  if ! wifi_radio_enabled; then
+    nmcli radio wifi on || true
+  fi
+}
+
 start_hotspot() {
-  nmcli radio wifi on || true
+  ensure_wifi_radio_on
   if ! hotspot_active; then
     ensure_hotspot_profile
     nmcli con up "${HOTSPOT_NAME}" || true
@@ -95,7 +105,9 @@ start_hotspot() {
 stop_hotspot() {
   systemctl stop barksignal-portal.service || true
   remove_http_redirect
-  nmcli con down "${HOTSPOT_NAME}" >/dev/null 2>&1 || true
+  if hotspot_active; then
+    nmcli con down "${HOTSPOT_NAME}" >/dev/null 2>&1 || true
+  fi
 }
 
 start_detector() {
